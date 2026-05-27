@@ -1,0 +1,135 @@
+# Agent Versioning API — REST Client test file
+@baseUrl      = http://localhost:4000
+@creatorToken = CREATOR_JWT_TOKEN_HERE   # creator@omip.io / Creator@1234
+@userToken    = USER_JWT_TOKEN_HERE      # user@omip.io    / User@1234
+# Replace after creating:
+@agentId      = seed-agent-research-bot
+@versionId    = VERSION_ID_HERE
+
+### ── SAVE VERSION (snapshot current agent config) ──────────────────────────────
+POST {{baseUrl}}/api/agents/{{agentId}}/versions
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "changelog": "Initial stable release — tuned temperature to 0.3."
+}
+
+###
+
+### ── SAVE VERSION (no changelog) ───────────────────────────────────────────────
+POST {{baseUrl}}/api/agents/{{agentId}}/versions
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{}
+
+###
+
+### ── LIST ALL VERSIONS ──────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/agents/{{agentId}}/versions
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── GET SPECIFIC VERSION (full snapshot) ───────────────────────────────────────
+GET {{baseUrl}}/api/agents/{{agentId}}/versions/{{versionId}}
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── ROLLBACK — save current first (default) ────────────────────────────────────
+# Saves the live config as the next version, then restores the snapshot
+POST {{baseUrl}}/api/agents/{{agentId}}/versions/{{versionId}}/rollback
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "saveCurrentFirst": true,
+  "changelog": "Pre-rollback auto-save before reverting to v1."
+}
+
+###
+
+### ── ROLLBACK — destructive (skip auto-save) ────────────────────────────────────
+POST {{baseUrl}}/api/agents/{{agentId}}/versions/{{versionId}}/rollback
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "saveCurrentFirst": false
+}
+
+###
+
+### ── DELETE VERSION ─────────────────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/agents/{{agentId}}/versions/{{versionId}}
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── SECURITY: non-owner cannot list versions (should 403) ─────────────────────
+GET {{baseUrl}}/api/agents/{{agentId}}/versions
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── SECURITY: non-owner cannot save version (should 403) ──────────────────────
+POST {{baseUrl}}/api/agents/{{agentId}}/versions
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "changelog": "Should be rejected."
+}
+
+###
+
+### ── SECURITY: rollback with wrong version ID (should 404) ──────────────────────
+POST {{baseUrl}}/api/agents/{{agentId}}/versions/nonexistent-version-id/rollback
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "saveCurrentFirst": false
+}
+
+###
+
+### ── WORKFLOW: Save → edit agent → save again → list (shows 2 versions) ─────────
+# Step 1: Save version 1
+POST {{baseUrl}}/api/agents/{{agentId}}/versions
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "changelog": "Version 1 — original prompt."
+}
+
+###
+# Step 2: Update the agent (PATCH /api/agents/:id)
+PATCH {{baseUrl}}/api/agents/{{agentId}}
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "prompt": "You are ResearchBot Pro v2, upgraded with better citation formatting.",
+  "config": { "temperature": 0.25, "maxTokens": 8192 }
+}
+
+###
+# Step 3: Save version 2
+POST {{baseUrl}}/api/agents/{{agentId}}/versions
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "changelog": "Version 2 — improved citation prompt + larger context window."
+}
+
+###
+# Step 4: List all versions (should show 2 entries)
+GET {{baseUrl}}/api/agents/{{agentId}}/versions
+Authorization: Bearer {{creatorToken}}
+
+###

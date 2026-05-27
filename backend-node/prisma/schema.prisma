@@ -1,0 +1,967 @@
+// ============================================================
+// Omip AaaS — Prisma Schema
+// Steps: 2  (users · agents · execution_logs)
+//        8  (workflows · workflow_runs)
+//        10 (schedules · schedule_runs)
+//        11 (teams · team_members)
+//        12 (listings · subscriptions · listing_reviews)
+// (future tables added per step without breaking migrations)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  USER
+  CREATOR
+  ADMIN
+}
+
+enum AgentStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum WorkflowRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ScheduleRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  DEPRECATED
+  SUSPENDED
+}
+
+enum PricingModel {
+  FREE
+  PER_RUN
+  SUBSCRIPTION_MONTHLY
+}
+
+enum NotificationType {
+  EXECUTION_COMPLETED
+  EXECUTION_FAILED
+  SUBSCRIPTION_NEW
+  REVIEW_RECEIVED
+  INVITE_RECEIVED
+}
+
+enum ResourceType {
+  AGENT
+  WORKFLOW
+  LISTING
+  INTEGRATION
+}
+
+enum PermissionAction {
+  READ
+  RUN
+  EDIT
+  DELETE
+  SHARE
+  USE
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  username      String    @unique
+  passwordHash  String    @map("password_hash")
+  role          UserRole  @default(USER)
+  isActive      Boolean   @default(true) @map("is_active")
+  isEmailVerified Boolean @default(false) @map("is_email_verified")
+  twoFactorEnabled Boolean @default(false) @map("two_factor_enabled")
+  // Profile
+  displayName   String?   @map("display_name")
+  avatarUrl     String?   @map("avatar_url")
+  bio           String?
+  // Credits
+  credits          Int @default(100)
+  totalCreditsUsed Int @default(0) @map("total_credits_used")
+  // Timestamps
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt      @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+
+  // Relations
+  agents          Agent[]
+  executionLogs   ExecutionLog[]
+  workflows       Workflow[]
+  workflowRuns    WorkflowRun[]
+  schedules       Schedule[]
+  teamMemberships TeamMember[]    @relation("UserTeams")
+  sentInvites     TeamMember[]    @relation("InvitedBy")
+  listings        Listing[]       @relation("CreatorListings")
+  subscriptions   Subscription[]
+  listingReviews  ListingReview[]
+  agentVersions        AgentVersion[]
+  notifications        Notification[]
+  receivedPermissions  Permission[]   @relation("ReceivedPermissions")
+  grantedPermissions   Permission[]   @relation("GrantedPermissions")
+  connections          Connection[]
+  downloadLogs         DownloadLog[]
+  creditLogs           CreditLog[]
+  apiProducts          ApiProduct[]     @relation("ProviderApis")
+  apiKeys              ApiKey[]
+  apiUsage             ApiUsage[]
+  auditLogs            AuditLog[]       @relation("UserAuditLogs")
+  sessions             Session[]
+  billingSubscription  BillingSubscription?
+  invoices             Invoice[]
+  creatorPayouts       CreatorPayout[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// ─── Agents ──────────────────────────────────────────────────────────────────
+
+model Agent {
+  id          String      @id @default(uuid())
+  userId      String      @map("user_id")
+  // Identity
+  name        String
+  description String      @default("")
+  category    String      @default("general")
+  // Core agent config
+  prompt      String      @db.Text           // system prompt
+  model       String      @default("gpt-4o") // LLM model identifier
+  config      Json        @default("{}")      // temperature, maxTokens, etc.
+  tools       Json        @default("[]")      // array of tool names/configs
+  // Marketplace / visibility
+  isPublic    Boolean     @default(false) @map("is_public")
+  version     String      @default("1.0.0")
+  status      AgentStatus @default(DRAFT)
+  iconUrl     String?     @map("icon_url")
+  tags        String[]    @default([])
+  teamId      String?     @map("team_id")
+  // Stats (denormalised for fast reads)
+  runsCount      Int @default(0) @map("runs_count")
+  successCount   Int @default(0) @map("success_count")
+  failureCount   Int @default(0) @map("failure_count")
+  // Execution framework / type
+  framework   String  @default("") // e.g. "LangChain", "LlamaIndex", "CrewAI"
+  type        String  @default("llm") // "llm" | "rag" | "api" | "script" | "workflow" | "multi-agent"
+  // Download / licensing
+  pricing      String @default("free")      // "free" | "paid"
+  downloadType String @default("full") @map("download_type") // "full" | "restricted"
+  // Timestamps
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team           Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  executionLogs  ExecutionLog[]
+  schedules      Schedule[]
+  listing        Listing?
+  versions       AgentVersion[]
+  downloadLogs   DownloadLog[]
+
+  @@index([userId])
+  @@index([teamId])
+  @@index([status])
+  @@index([isPublic])
+  @@index([category])
+  @@map("agents")
+}
+
+// ─── Execution Logs ──────────────────────────────────────────────────────────
+
+model ExecutionLog {
+  id       String          @id @default(uuid())
+  agentId  String          @map("agent_id")
+  userId   String          @map("user_id")
+  // Execution config snapshot (immutable record of what was used)
+  modelUsed   String  @map("model_used")
+  promptUsed  String  @map("prompt_used")  @db.Text
+  toolsUsed   Json    @default("[]")       @map("tools_used")
+  // I/O
+  inputData   Json    @default("{}") @map("input_data")
+  outputData  Json?   @map("output_data")
+  // Status & timing
+  status      ExecutionStatus @default(PENDING)
+  errorMessage String?        @map("error_message") @db.Text
+  durationMs   Int?           @map("duration_ms")
+  // Token usage
+  promptTokens     Int? @map("prompt_tokens")
+  completionTokens Int? @map("completion_tokens")
+  totalTokens      Int? @map("total_tokens")
+  // Retry tracking
+  retryCount  Int @default(0) @map("retry_count")
+  // Source: manual | scheduled | webhook | workflow
+  triggerSource String @default("manual") @map("trigger_source")
+  scheduleId    String? @map("schedule_id")
+  workflowRunId String? @map("workflow_run_id")
+  // Timestamps
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  agent  Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user   User  @relation(fields: [userId],  references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([triggerSource])
+  @@map("execution_logs")
+}
+
+// ─── Workflows ────────────────────────────────────────────────────────────────
+
+model Workflow {
+  id          String  @id @default(uuid())
+  userId      String  @map("user_id")
+  name        String
+  description String  @default("")
+  // Array of WorkflowStep objects serialised as JSON:
+  // [{ id, name, agentId, inputTemplate, config? }]
+  steps       Json    @default("[]")
+  // If true the workflow can be called by other users via /run
+  isPublic    Boolean @default(false) @map("is_public")
+  isActive    Boolean @default(true)  @map("is_active")
+  // Stats
+  runsCount   Int     @default(0) @map("runs_count")
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workflowRuns WorkflowRun[]
+
+  @@index([userId])
+  @@index([isPublic])
+  @@map("workflows")
+}
+
+model WorkflowRun {
+  id         String            @id @default(uuid())
+  workflowId String            @map("workflow_id")
+  userId     String            @map("user_id")
+  // Input provided by the caller
+  inputData  Json              @default("{}") @map("input_data")
+  // Final output from the last successful step
+  outputData Json?             @map("output_data")
+  // Per-step results array: WorkflowStepResult[]
+  stepResults Json             @default("[]") @map("step_results")
+  status     WorkflowRunStatus @default(PENDING)
+  errorMessage String?         @map("error_message") @db.Text
+  // How was this run triggered?
+  triggerSource String         @default("manual") @map("trigger_source")
+  // Timing
+  durationMs  Int?             @map("duration_ms")
+  startedAt   DateTime?        @map("started_at")
+  completedAt DateTime?        @map("completed_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId],     references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("workflow_runs")
+}
+
+// ─── Schedules ────────────────────────────────────────────────────────────────
+
+model Schedule {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  agentId        String   @map("agent_id")
+  name           String
+  description    String   @default("")
+  // node-cron expression e.g. "0 9 * * 1-5" (weekdays at 09:00)
+  cronExpression String   @map("cron_expression")
+  // Template sent as userInput when the schedule fires
+  // Supports {{now}}, {{date}}, {{schedule_name}} tokens
+  inputTemplate  String   @default("Run scheduled task.") @db.Text @map("input_template")
+  // Optional: override agent config for this schedule
+  overrides      Json     @default("{}") // { model?, temperature?, maxTokens? }
+  timezone       String   @default("UTC")
+  maxRetries     Int      @default(3) @map("max_retries")
+  isActive       Boolean  @default(true)  @map("is_active")  // false = soft deleted
+  isPaused       Boolean  @default(false) @map("is_paused")  // true = cron stopped but not deleted
+  // Stats
+  runsCount    Int       @default(0) @map("runs_count")
+  failureCount Int       @default(0) @map("failure_count")
+  lastRunAt    DateTime? @map("last_run_at")
+  nextRunAt    DateTime? @map("next_run_at")
+  // Timestamps
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  user         User          @relation(fields: [userId],  references: [id], onDelete: Cascade)
+  agent        Agent         @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  scheduleRuns ScheduleRun[]
+
+  @@index([userId])
+  @@index([agentId])
+  @@index([isActive, isPaused])
+  @@map("schedules")
+}
+
+model ScheduleRun {
+  id             String            @id @default(uuid())
+  scheduleId     String            @map("schedule_id")
+  // Links to the ExecutionLog created when the agent ran
+  executionLogId String?           @map("execution_log_id")
+  // BullMQ job ID for tracing async executions
+  jobId          String?           @map("job_id")
+  status         ScheduleRunStatus @default(PENDING)
+  error          String?           @db.Text
+  retryCount     Int               @default(0) @map("retry_count")
+  // Timing
+  triggeredAt    DateTime          @default(now()) @map("triggered_at")
+  completedAt    DateTime?         @map("completed_at")
+  durationMs     Int?              @map("duration_ms")
+
+  // Relations
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@index([status])
+  @@index([triggeredAt])
+  @@map("schedule_runs")
+}
+
+// ─── Teams ────────────────────────────────────────────────────────────────────
+
+model Team {
+  id          String  @id @default(uuid())
+  name        String
+  description String  @default("")
+  // URL-safe identifier e.g. "acme-ai-labs"
+  slug        String  @unique
+  avatarUrl   String? @map("avatar_url")
+  isActive    Boolean @default(true) @map("is_active")
+  // Soft limits
+  maxMembers  Int     @default(10) @map("max_members")
+  // Enterprise / Billing
+  credits          Int @default(0)
+  totalCreditsUsed Int @default(0) @map("total_credits_used")
+  twoFactorEnforced Boolean @default(false) @map("two_factor_enforced")
+  
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  members TeamMember[]
+  agents  Agent[]
+  creditLogs CreditLog[]
+
+  @@index([slug])
+  @@map("teams")
+}
+
+model TeamMember {
+  id      String   @id @default(uuid())
+  teamId  String   @map("team_id")
+  // null while invite is still PENDING (user may not exist yet)
+  userId  String?  @map("user_id")
+  role    TeamRole @default(MEMBER)
+  // Invite state
+  inviteEmail  String?      @map("invite_email")   // who was invited (email)
+  inviteToken  String?      @unique @map("invite_token")  // JWT-like opaque token
+  inviteStatus InviteStatus @default(ACCEPTED) @map("invite_status")
+  invitedById  String?      @map("invited_by_id")  // who sent the invite
+  joinedAt     DateTime?    @map("joined_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  team      Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User? @relation("UserTeams",  fields: [userId],      references: [id], onDelete: SetNull)
+  invitedBy User? @relation("InvitedBy",  fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@index([inviteToken])
+  @@index([inviteStatus])
+  @@map("team_members")
+}
+
+// ─── Marketplace ──────────────────────────────────────────────────────────────
+
+model Listing {
+  id          String        @id @default(uuid())
+  // One listing per agent
+  agentId     String        @unique @map("agent_id")
+  userId      String        @map("user_id")
+  // Display
+  name        String
+  tagline     String        @default("")
+  description String        @default("") @db.Text
+  category    String        @default("general")
+  tags        String[]      @default([])
+  iconUrl     String?       @map("icon_url")
+  // Pricing
+  pricingModel  PricingModel @default(FREE) @map("pricing_model")
+  pricePerRun   Decimal?     @map("price_per_run")    @db.Decimal(10,4)
+  priceMonthly  Decimal?     @map("price_monthly")    @db.Decimal(10,2)
+  // Limits
+  rateLimitPerDay Int        @default(100) @map("rate_limit_per_day")
+  // Status & lifecycle
+  status        ListingStatus @default(DRAFT)
+  publishedAt   DateTime?     @map("published_at")
+  // Stats (denormalised for fast reads)
+  subscribersCount Int  @default(0) @map("subscribers_count")
+  totalRunsCount   Int  @default(0) @map("total_runs_count")
+  avgRating        Float @default(0) @map("avg_rating")
+  reviewsCount     Int  @default(0) @map("reviews_count")
+  // Timestamps
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  agent         Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  creator       User            @relation("CreatorListings", fields: [userId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+  reviews       ListingReview[]
+  collections   CollectionItem[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([category])
+  @@index([avgRating])
+  @@map("listings")
+}
+
+model Subscription {
+  id        String @id @default(uuid())
+  listingId String @map("listing_id")
+  userId    String @map("user_id")
+  // Opaque API key: "omip_" + 48 hex chars
+  apiKey    String @unique @map("api_key")
+  isActive  Boolean @default(true) @map("is_active")
+  // Usage counters
+  dailyRunsUsed Int      @default(0) @map("daily_runs_used")
+  totalRunsUsed Int      @default(0) @map("total_runs_used")
+  dailyResetAt  DateTime @default(now()) @map("daily_reset_at")
+  lastUsedAt    DateTime? @map("last_used_at")
+  // Timestamps
+  subscribedAt  DateTime  @default(now()) @map("subscribed_at")
+  cancelledAt   DateTime? @map("cancelled_at")
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId],    references: [id], onDelete: Cascade)
+
+  @@unique([listingId, userId])
+  @@index([apiKey])
+  @@index([userId])
+  @@map("subscriptions")
+}
+
+model ListingReview {
+  id        String  @id @default(uuid())
+  listingId String  @map("listing_id")
+  userId    String  @map("user_id")
+  rating    Int     // 1-5
+  comment   String? @db.Text
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId],    references: [id], onDelete: Cascade)
+
+  @@unique([listingId, userId])
+  @@index([listingId])
+  @@map("listing_reviews")
+}
+
+// ─── Agent Versioning ─────────────────────────────────────────────────────────
+
+model AgentVersion {
+  id            String  @id @default(uuid())
+  agentId       String  @map("agent_id")
+  // Auto-incrementing per agent (1, 2, 3 …)
+  versionNumber Int     @map("version_number")
+  // Full snapshot of agent config at save time
+  name          String
+  description   String  @default("")
+  prompt        String  @db.Text
+  model         String
+  config        Json    @default("{}")
+  tools         Json    @default("[]")
+  // Optional human note about what changed
+  changelog     String? @db.Text
+  // Who triggered the save
+  createdBy     String  @map("created_by")
+  // Timestamps
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  agent   Agent @relation(fields: [agentId],   references: [id], onDelete: Cascade)
+  creator User  @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, versionNumber])
+  @@index([agentId])
+  @@map("agent_versions")
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+model Notification {
+  id       String           @id @default(uuid())
+  userId   String           @map("user_id")
+  type     NotificationType
+  title    String
+  body     String           @db.Text
+  // Contextual data: agentId, listingId, teamId, executionId, etc.
+  metadata Json             @default("{}")
+  isRead   Boolean          @default(false) @map("is_read")
+  readAt   DateTime?        @map("read_at")
+  // Timestamps
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ─── Permissions ──────────────────────────────────────────────────────────────
+
+model Permission {
+  id           String           @id @default(uuid())
+  // Who receives the permission
+  userId       String           @map("user_id")
+  resourceType ResourceType     @map("resource_type")
+  resourceId   String           @map("resource_id")
+  action       PermissionAction
+  // Who granted it (must be resource owner)
+  grantedBy    String           @map("granted_by")
+  // Timestamps
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  user    User @relation("ReceivedPermissions", fields: [userId],    references: [id], onDelete: Cascade)
+  grantor User @relation("GrantedPermissions",  fields: [grantedBy], references: [id], onDelete: Cascade)
+
+  @@unique([userId, resourceType, resourceId, action])
+  @@index([userId, resourceType])
+  @@index([resourceType, resourceId])
+  @@map("permissions")
+}
+
+// ─── OAuth & Integrations ──────────────────────────────────────────────────
+
+// A third-party service provider (e.g. Google, Slack, GitHub)
+model Integration {
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique // e.g. "google-drive"
+  description  String?
+  iconUrl      String?  @map("icon_url")
+  // OAuth Config
+  authUrl      String?  @map("auth_url")
+  tokenUrl     String?  @map("token_url")
+  clientId     String?  @map("client_id")
+  clientSecret String?  @map("client_secret") // Should be encrypted in a real production env
+  defaultScopes String[] @default([]) @map("default_scopes")
+  
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  connections  Connection[]
+
+  @@map("integrations")
+}
+
+// A user's specific connection to an integration
+model Connection {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  integrationId String    @map("integration_id")
+  // Auth state
+  accessToken   String    @map("access_token") @db.Text
+  refreshToken  String?   @map("refresh_token") @db.Text
+  expiresAt     DateTime? @map("expires_at")
+  // Current scopes (may be a subset of integration's scopes)
+  scopes        String[]  @default([])
+  // Profile info from the provider (email, name, accountId)
+  profileData   Json?     @map("profile_data")
+  
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt      @map("updated_at")
+
+  user        User        @relation(fields: [userId],        references: [id], onDelete: Cascade)
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, integrationId])
+  @@index([userId])
+  @@index([integrationId])
+  @@map("connections")
+}
+
+// ─── Download Analytics ───────────────────────────────────────────────────────
+
+model DownloadLog {
+  id        String   @id @default(uuid())
+  agentId   String   @map("agent_id")
+  userId    String   @map("user_id")
+  // "cli" | "docker"
+  format    String
+  // "windows" | "macos" | "linux" | "unknown"
+  os        String   @default("unknown")
+  // "full" | "restricted" — what tier was served
+  tier      String   @default("full")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId],  references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("download_logs")
+}
+
+// ─── External API Marketplace ────────────────────────────────────────────────
+
+// Catalogue of external APIs available in the API marketplace.
+// Seeded by admins / providers; users subscribe to get API keys.
+model ApiProduct {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id") // Provider / Creator
+  name         String
+  description  String   @db.Text
+  category     String   @default("general")
+  baseUrl      String   @map("base_url")
+  // "per_call" | "monthly" | "free"
+  pricingType  String   @default("free") @map("pricing_type")
+  pricePerCall Float?   @map("price_per_call")   // USD cents
+  priceMonthly Float?   @map("price_monthly")    // USD cents
+  freeCallsPerDay Int   @default(0) @map("free_calls_per_day")
+  // "api_key" | "oauth" | "bearer" | "none"
+  authType     String   @default("api_key") @map("auth_type")
+  isVerified   Boolean  @default(false) @map("is_verified")
+  isActive     Boolean  @default(true)  @map("is_active")
+  isFeatured   Boolean  @default(false) @map("is_featured")
+  isTrending   Boolean  @default(false) @map("is_trending")
+  rating       Float    @default(0)
+  reviewsCount Int      @default(0) @map("reviews_count")
+  requestCount Int      @default(0) @map("request_count")
+  tags         String[] @default([])
+  // Latency + uptime for display (updated by periodic health checks or seeded)
+  latencyMs    Int      @default(0) @map("latency_ms")
+  uptimePct    Float    @default(99.9) @map("uptime_pct")
+  version      String   @default("1.0.0")
+  // Optional proxy target (the real upstream base URL we forward to)
+  proxyTarget  String?  @map("proxy_target")
+  // Timestamps
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  // Relations
+  provider User      @relation("ProviderApis", fields: [userId], references: [id], onDelete: Cascade)
+  plans    ApiPlan[]
+  apiKeys  ApiKey[]
+  apiUsage ApiUsage[]
+
+  @@index([isActive])
+  @@index([category])
+  @@index([isFeatured])
+  @@map("api_products")
+}
+
+// Pricing plans for an API product
+model ApiPlan {
+  id          String   @id @default(uuid())
+  apiId       String   @map("api_id")
+  name        String   // "Free", "Pro", "Enterprise"
+  description String?  @db.Text
+  price       Float    @default(0) // USD cents
+  limit       Int      @default(100) // calls per day
+  features    String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  apiProduct ApiProduct @relation(fields: [apiId], references: [id], onDelete: Cascade)
+  apiKeys    ApiKey[]
+
+  @@map("api_plans")
+}
+
+// Per-user subscription record for an ApiProduct.
+// One record per (userId, apiId) — unique key issued on subscribe.
+model ApiKey {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  apiId       String    @map("api_id")
+  planId      String?   @map("plan_id")
+  // "sk_live_" + random — shown to user once, stored hashed in production
+  key         String    @unique
+  isActive    Boolean   @default(true) @map("is_active")
+  totalCalls  Int       @default(0)    @map("total_calls")
+  lastUsedAt  DateTime? @map("last_used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiProduct ApiProduct @relation(fields: [apiId],  references: [id], onDelete: Cascade)
+  plan       ApiPlan?   @relation(fields: [planId], references: [id], onDelete: SetNull)
+  apiUsage   ApiUsage[]
+
+  @@unique([userId, apiId])
+  @@index([userId])
+  @@index([apiId])
+  @@map("api_keys")
+}
+
+// Per-call usage log for proxy-executed API calls.
+model ApiUsage {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  apiId      String   @map("api_id")
+  apiKeyId   String   @map("api_key_id")
+  statusCode Int?     @map("status_code")
+  latencyMs  Int?     @map("latency_ms")
+  endpoint   String   @default("/") // path that was proxied
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User       @relation(fields: [userId],   references: [id], onDelete: Cascade)
+  apiProduct ApiProduct @relation(fields: [apiId],    references: [id], onDelete: Cascade)
+  apiKey     ApiKey     @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([apiId])
+  @@index([apiKeyId])
+  @@index([createdAt])
+  @@map("api_usage")
+}
+
+// ─── Credit Ledger ─────────────────────────────────────────────────────────────
+
+model CreditLog {
+  id      String  @id @default(uuid())
+  userId  String? @map("user_id")
+  teamId  String? @map("team_id")
+  agentId String? @map("agent_id")
+  // Positive = top-up / grant; negative = deduction for agent run
+  amount  Int
+  // "deduction" | "topup" | "refund" | "bonus"
+  type    String
+  note    String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  team Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([teamId])
+  @@index([userId, createdAt])
+  @@index([teamId, createdAt])
+  @@map("credit_logs")
+}
+
+// ─── Sessions ─────────────────────────────────────────────────────────────────
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  token        String   @unique
+  expiresAt    DateTime @map("expires_at")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  isValid      Boolean  @default(true) @map("is_valid")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  // e.g. "auth.login", "agent.deleted", "team.invite_sent"
+  action     String
+  entityType String   @map("entity_type") // e.g. "AGENT", "USER", "TEAM"
+  entityId   String   @map("entity_id")
+  metadata   Json     @default("{}")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation("UserAuditLogs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ─── Billing & Subscriptions ──────────────────────────────────────────────────
+
+model BillingPlan {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  interval    String   @default("month") // "month" | "year"
+  features    Json     @default("{}")    // { "maxAgents": 10, "prioritySupport": true }
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  subscriptions BillingSubscription[]
+
+  @@map("billing_plans")
+}
+
+model BillingSubscription {
+  id            String    @id @default(uuid())
+  userId        String    @unique @map("user_id")
+  planId        String    @map("plan_id")
+  status        String    @default("active") // "active" | "canceled" | "past_due"
+  stripeId      String?   @unique @map("stripe_id")
+  currentPeriodStart DateTime @map("current_period_start")
+  currentPeriodEnd   DateTime @map("current_period_end")
+  cancelAtPeriodEnd  Boolean  @default(false) @map("cancel_at_period_end")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt      @map("updated_at")
+
+  user User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan BillingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("billing_subscriptions")
+}
+
+model Invoice {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  amount      Decimal  @db.Decimal(10, 2)
+  status      String   @default("pending") // "pending" | "paid" | "void"
+  currency    String   @default("USD")
+  stripeId    String?  @unique @map("stripe_id")
+  hostedUrl   String?  @map("hosted_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items InvoiceItem[]
+
+  @@index([userId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        String  @id @default(uuid())
+  invoiceId String  @map("invoice_id")
+  amount    Decimal @db.Decimal(10, 2)
+  description String
+  quantity  Int     @default(1)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+}
+
+model CreatorPayout {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id") // Creator
+  amount    Decimal  @db.Decimal(10, 2)
+  status    String   @default("pending") // "pending" | "processed" | "failed"
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("creator_payouts")
+}
+
+// ─── Collections & Bundles ─────────────────────────────────────────────────────
+
+model Collection {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  iconUrl     String?  @map("icon_url")
+  isFeatured  Boolean  @default(false) @map("is_featured")
+  isActive    Boolean  @default(true)  @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  items CollectionItem[]
+
+  @@map("collections")
+}
+
+model CollectionItem {
+  id           String @id @default(uuid())
+  collectionId String @map("collection_id")
+  listingId    String @map("listing_id")
+  displayOrder Int    @default(0) @map("display_order")
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  listing    Listing    @relation(fields: [listingId],    references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, listingId])
+  @@map("collection_items")
+}

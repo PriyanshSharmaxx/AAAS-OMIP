@@ -1,0 +1,135 @@
+# Scheduler API — REST Client test file
+@baseUrl = http://localhost:4000
+@token = YOUR_JWT_TOKEN_HERE
+@agentId = seed-agent-research-bot
+# Replace after creating a schedule:
+@scheduleId = SCHEDULE_ID_HERE
+
+### ── SCHEDULER STATUS (active cron count) ───────────────────────────────────
+GET {{baseUrl}}/api/schedule/status
+Authorization: Bearer {{token}}
+
+###
+
+### ── CREATE SCHEDULE: weekdays at 09:00 UTC ──────────────────────────────────
+POST {{baseUrl}}/api/schedule
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "agentId": "{{agentId}}",
+  "name": "Daily Morning Brief",
+  "description": "Runs every weekday morning to summarise overnight AI news.",
+  "cronExpression": "0 9 * * 1-5",
+  "inputTemplate": "Good morning! Today is {{date}}. Please summarise the top 5 AI and tech news stories from the last 24 hours.",
+  "timezone": "UTC",
+  "maxRetries": 3
+}
+
+###
+
+### ── CREATE SCHEDULE: every hour ────────────────────────────────────────────
+POST {{baseUrl}}/api/schedule
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "agentId": "{{agentId}}",
+  "name": "Hourly Market Check",
+  "description": "Checks market conditions every hour during trading hours.",
+  "cronExpression": "0 * * * *",
+  "inputTemplate": "It is {{time}} UTC on {{date}}. Give a brief status on global tech stocks and any significant market moves in the last hour.",
+  "overrides": {
+    "temperature": 0.1,
+    "maxTokens": 512
+  }
+}
+
+###
+
+### ── CREATE SCHEDULE: every Monday at 08:00 ─────────────────────────────────
+POST {{baseUrl}}/api/schedule
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "agentId": "{{agentId}}",
+  "name": "Weekly Research Digest",
+  "cronExpression": "0 8 * * 1",
+  "inputTemplate": "Weekly digest for {{schedule_name}} — {{date}}. Summarise the most important AI research papers and breakthroughs from the past week."
+}
+
+###
+
+### ── LIST MY SCHEDULES ────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/schedule
+Authorization: Bearer {{token}}
+
+###
+
+### ── GET SCHEDULE ─────────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/schedule/{{scheduleId}}
+Authorization: Bearer {{token}}
+
+###
+
+### ── UPDATE SCHEDULE (change cron expression) ───────────────────────────────
+PATCH {{baseUrl}}/api/schedule/{{scheduleId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "cronExpression": "30 9 * * 1-5",
+  "name": "Daily Morning Brief (9:30am)"
+}
+
+###
+
+### ── PAUSE SCHEDULE ──────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/schedule/{{scheduleId}}/pause
+Authorization: Bearer {{token}}
+
+###
+
+### ── RESUME SCHEDULE ─────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/schedule/{{scheduleId}}/resume
+Authorization: Bearer {{token}}
+
+###
+
+### ── MANUAL TRIGGER (fire now regardless of cron) ───────────────────────────
+POST {{baseUrl}}/api/schedule/{{scheduleId}}/trigger
+Authorization: Bearer {{token}}
+
+###
+
+### ── GET RUN HISTORY ─────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/schedule/{{scheduleId}}/runs?limit=10
+Authorization: Bearer {{token}}
+
+###
+
+### ── DELETE SCHEDULE ─────────────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/schedule/{{scheduleId}}
+Authorization: Bearer {{token}}
+
+###
+
+### ── VALIDATION: invalid cron expression (should return 400) ────────────────
+POST {{baseUrl}}/api/schedule
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "agentId": "{{agentId}}",
+  "name": "Bad Cron",
+  "cronExpression": "not-a-valid-cron"
+}
+
+###
+
+### ── VALIDATION: pause already-paused (should return 400) ──────────────────
+POST {{baseUrl}}/api/schedule/{{scheduleId}}/pause
+Authorization: Bearer {{token}}
+
+###

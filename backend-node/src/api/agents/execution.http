@@ -1,0 +1,87 @@
+# Agent Execution API — REST Client test file
+@baseUrl = http://localhost:4000
+@token = YOUR_JWT_TOKEN_HERE
+# Use a real agent id from /api/agents or seed data:
+@agentId = seed-agent-research-bot
+
+### ── RUN AGENT (basic) ──────────────────────────────────────────────────────
+POST {{baseUrl}}/api/agents/run
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "agentId": "{{agentId}}",
+  "userInput": "Give me a brief overview of recent developments in quantum computing.",
+  "triggerSource": "manual"
+}
+
+###
+
+### ── RUN AGENT (with overrides + history) ───────────────────────────────────
+POST {{baseUrl}}/api/agents/run
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "agentId": "{{agentId}}",
+  "userInput": "Now summarise what you found in 3 bullet points.",
+  "overrides": {
+    "temperature": 0.2,
+    "maxTokens": 512
+  },
+  "history": [
+    {
+      "role": "user",
+      "content": "Tell me about quantum computing."
+    },
+    {
+      "role": "assistant",
+      "content": "Quantum computing uses quantum bits (qubits) to perform computations..."
+    }
+  ],
+  "triggerSource": "manual"
+}
+
+###
+
+### ── LIST MY RUNS ────────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/agents/runs?limit=10
+Authorization: Bearer {{token}}
+
+###
+
+### ── LIST MY RUNS — filtered by agent ───────────────────────────────────────
+GET {{baseUrl}}/api/agents/runs?agentId={{agentId}}&limit=5
+Authorization: Bearer {{token}}
+
+###
+
+### ── RUN STATS ───────────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/agents/runs/stats
+Authorization: Bearer {{token}}
+
+###
+
+### ── GET SINGLE RUN (paste executionId from above) ─────────────────────────
+GET {{baseUrl}}/api/agents/runs/EXECUTION_ID_HERE
+Authorization: Bearer {{token}}
+
+###
+
+### ── AGENT EXECUTION HISTORY ─────────────────────────────────────────────────
+GET {{baseUrl}}/api/agents/{{agentId}}/runs?limit=5
+Authorization: Bearer {{token}}
+
+###
+
+### ── Test: run archived agent (should return 410) ──────────────────────────
+POST {{baseUrl}}/api/agents/run
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "agentId": "non-existent-id-12345678-1234-1234-1234-123456789012",
+  "userInput": "Hello"
+}
+
+###

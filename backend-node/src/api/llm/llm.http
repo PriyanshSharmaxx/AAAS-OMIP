@@ -1,0 +1,63 @@
+# LLM Integration — REST Client test file
+@baseUrl = http://localhost:4000
+@token = YOUR_JWT_TOKEN_HERE
+
+### List all registered tools
+GET {{baseUrl}}/api/llm/tools
+Authorization: Bearer {{token}}
+
+###
+
+### Quick one-shot call (no tools)
+POST {{baseUrl}}/api/llm/quick
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "systemPrompt": "You are a helpful assistant. Be concise.",
+  "userMessage": "What is the capital of France?",
+  "model": "gpt-4o-mini",
+  "temperature": 0.3,
+  "maxTokens": 256
+}
+
+###
+
+### Full agentic run WITH tool use (web_search)
+POST {{baseUrl}}/api/llm/run
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "systemPrompt": "You are a research assistant. Use web_search to find current information.",
+  "userInput": "What are the top 3 AI news stories this week?",
+  "model": "gpt-4o",
+  "tools": [
+    { "name": "web_search", "enabled": true }
+  ],
+  "config": {
+    "temperature": 0.3,
+    "maxTokens": 2048
+  },
+  "maxIterations": 3
+}
+
+###
+
+### Agentic run with calculator tool
+POST {{baseUrl}}/api/llm/run
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "systemPrompt": "You are a helpful math assistant. Use the calculator tool to compute results.",
+  "userInput": "Calculate the compound interest on $10,000 at 5% annual rate for 3 years.",
+  "model": "gpt-4o",
+  "tools": [
+    { "name": "calculator", "enabled": true }
+  ],
+  "config": { "temperature": 0.1, "maxTokens": 1024 },
+  "maxIterations": 3
+}
+
+###

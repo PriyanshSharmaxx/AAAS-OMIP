@@ -1,0 +1,201 @@
+# Marketplace API — REST Client test file
+@baseUrl       = http://localhost:4000
+@creatorToken  = CREATOR_JWT_TOKEN_HERE   # creator@omip.io / Creator@1234
+@userToken     = USER_JWT_TOKEN_HERE      # user@omip.io    / User@1234
+# Replace with IDs returned by the requests below
+@listingId     = LISTING_ID_HERE
+@agentId       = seed-agent-research-bot
+@apiKey        = SUBSCRIPTION_API_KEY_HERE
+
+### ── BROWSE (public, no auth) ──────────────────────────────────────────────────
+GET {{baseUrl}}/api/marketplace/browse
+Content-Type: application/json
+
+###
+
+### ── BROWSE — filtered by category ────────────────────────────────────────────
+GET {{baseUrl}}/api/marketplace/browse?category=research&orderBy=avgRating&limit=10
+Content-Type: application/json
+
+###
+
+### ── BROWSE — full text search ─────────────────────────────────────────────────
+GET {{baseUrl}}/api/marketplace/browse?search=research+bot&page=1&limit=5
+Content-Type: application/json
+
+###
+
+### ── BROWSE — filter by pricing ────────────────────────────────────────────────
+GET {{baseUrl}}/api/marketplace/browse?pricing=FREE&orderBy=totalRunsCount
+Content-Type: application/json
+
+###
+
+### ── CREATE LISTING (creator) ───────────────────────────────────────────────────
+POST {{baseUrl}}/api/marketplace
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "agentId": "{{agentId}}",
+  "name": "ResearchBot Pro API",
+  "tagline": "Production-grade AI research with citations.",
+  "description": "Deep web research with source validation and structured summaries.",
+  "category": "research",
+  "tags": ["research", "citations", "gpt-4o"],
+  "pricingModel": "FREE",
+  "rateLimitPerDay": 200
+}
+
+###
+
+### ── UPDATE LISTING ─────────────────────────────────────────────────────────────
+PATCH {{baseUrl}}/api/marketplace/{{listingId}}
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "tagline": "The most reliable research API for your app.",
+  "rateLimitPerDay": 500
+}
+
+###
+
+### ── PUBLISH LISTING ────────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/marketplace/{{listingId}}/publish
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── GET LISTING (public detail) ────────────────────────────────────────────────
+GET {{baseUrl}}/api/marketplace/{{listingId}}
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── MY LISTINGS (creator) ──────────────────────────────────────────────────────
+GET {{baseUrl}}/api/marketplace/my-listings
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── SUBSCRIBE (demo user subscribes to listing) ───────────────────────────────
+POST {{baseUrl}}/api/marketplace/{{listingId}}/subscribe
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── MY SUBSCRIPTIONS (demo user) ──────────────────────────────────────────────
+GET {{baseUrl}}/api/marketplace/my-subscriptions
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── USE API (execute agent via X-API-Key — no JWT) ───────────────────────────
+# Use the apiKey returned by the subscribe response
+POST {{baseUrl}}/api/marketplace/use
+X-API-Key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "userInput": "What are the top 3 AI breakthroughs in 2025?"
+}
+
+###
+
+### ── USE API — with overrides ──────────────────────────────────────────────────
+POST {{baseUrl}}/api/marketplace/use
+X-API-Key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "userInput": "Summarise the state of quantum computing in 2025.",
+  "overrides": {
+    "temperature": 0.2,
+    "maxTokens": 1024
+  }
+}
+
+###
+
+### ── SUBMIT REVIEW ───────────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/marketplace/{{listingId}}/reviews
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "rating": 5,
+  "comment": "Incredible results out of the box. Integrated it in under an hour."
+}
+
+###
+
+### ── GET REVIEWS ────────────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/marketplace/{{listingId}}/reviews?limit=10
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── DELETE REVIEW ───────────────────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/marketplace/{{listingId}}/reviews
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── UNPUBLISH LISTING (deprecate) ─────────────────────────────────────────────
+POST {{baseUrl}}/api/marketplace/{{listingId}}/unpublish
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── UNSUBSCRIBE ─────────────────────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/marketplace/{{listingId}}/subscribe
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── SECURITY: creator cannot subscribe to own listing (should 400) ────────────
+POST {{baseUrl}}/api/marketplace/{{listingId}}/subscribe
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── SECURITY: use API without key (should 401) ────────────────────────────────
+POST {{baseUrl}}/api/marketplace/use
+Content-Type: application/json
+
+{
+  "userInput": "This should fail with 401."
+}
+
+###
+
+### ── SECURITY: use API with invalid key (should 401) ───────────────────────────
+POST {{baseUrl}}/api/marketplace/use
+X-API-Key: omip_invalid_key_0000000000000000000000000000000000000000000000
+Content-Type: application/json
+
+{
+  "userInput": "This should fail with 401."
+}
+
+###
+
+### ── SECURITY: review without subscription (should 403) ────────────────────────
+POST {{baseUrl}}/api/marketplace/{{listingId}}/reviews
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "rating": 1,
+  "comment": "This should fail — creator cannot review own listing."
+}
+
+###
+
+### ── SECURITY: get suspended listing (should 404) ──────────────────────────────
+# Suspended listings are hidden from all public and authenticated views
+GET {{baseUrl}}/api/marketplace/nonexistent-listing-id-12345
+Authorization: Bearer {{userToken}}
+
+###

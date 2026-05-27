@@ -1,0 +1,185 @@
+# Workflow Engine API — REST Client test file
+@baseUrl = http://localhost:4000
+@token = YOUR_JWT_TOKEN_HERE
+# Replace with real agent IDs from GET /api/agents or seed data
+@agentId1 = seed-agent-research-bot
+@agentId2 = seed-agent-code-helper
+# Replace after creating a workflow:
+@workflowId = WORKFLOW_ID_HERE
+@runId = RUN_ID_HERE
+
+### ── CREATE WORKFLOW (2 steps) ──────────────────────────────────────────────
+# Step 1: Research a topic
+# Step 2: Summarise the research into bullet points
+# {{step_research.output}} is interpolated at runtime with step 1's output
+POST {{baseUrl}}/api/workflows
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Research & Summarise",
+  "description": "Research a topic with one agent then summarise with another.",
+  "isPublic": false,
+  "steps": [
+    {
+      "id": "step_research",
+      "name": "Research",
+      "agentId": "{{agentId1}}",
+      "inputTemplate": "{{initial_input}}"
+    },
+    {
+      "id": "step_summarise",
+      "name": "Summarise",
+      "agentId": "{{agentId2}}",
+      "inputTemplate": "Please summarise the following research into 5 concise bullet points:\n\n{{step_research.output}}",
+      "config": {
+        "temperature": 0.3,
+        "maxTokens": 512
+      }
+    }
+  ]
+}
+
+###
+
+### ── CREATE WORKFLOW (3 steps: research → translate → format) ───────────────
+POST {{baseUrl}}/api/workflows
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Research → Translate → Format",
+  "description": "Three-stage pipeline: research, translate to Spanish, format as HTML.",
+  "steps": [
+    {
+      "id": "step_research",
+      "name": "Research topic",
+      "agentId": "{{agentId1}}",
+      "inputTemplate": "{{initial_input}}"
+    },
+    {
+      "id": "step_translate",
+      "name": "Translate to Spanish",
+      "agentId": "{{agentId2}}",
+      "inputTemplate": "Translate the following text to Spanish:\n\n{{step_research.output}}"
+    },
+    {
+      "id": "step_format",
+      "name": "Format as HTML",
+      "agentId": "{{agentId1}}",
+      "inputTemplate": "Format the following text as a clean HTML document with headings and paragraphs:\n\n{{step_translate.output}}"
+    }
+  ]
+}
+
+###
+
+### ── LIST MY WORKFLOWS ───────────────────────────────────────────────────────
+GET {{baseUrl}}/api/workflows
+Authorization: Bearer {{token}}
+
+###
+
+### ── GET WORKFLOW ────────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/workflows/{{workflowId}}
+Authorization: Bearer {{token}}
+
+###
+
+### ── UPDATE WORKFLOW ─────────────────────────────────────────────────────────
+PATCH {{baseUrl}}/api/workflows/{{workflowId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Research & Summarise (Updated)",
+  "description": "Updated description.",
+  "isPublic": true
+}
+
+###
+
+### ── RUN WORKFLOW ────────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/workflows/{{workflowId}}/run
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "initialInput": "Explain the key advances in quantum computing in 2024 and their practical applications.",
+  "triggerSource": "manual"
+}
+
+###
+
+### ── RUN WORKFLOW — different initial input ─────────────────────────────────
+POST {{baseUrl}}/api/workflows/{{workflowId}}/run
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "initialInput": "What are the main benefits and risks of large language models in enterprise software?",
+  "triggerSource": "api"
+}
+
+###
+
+### ── LIST ALL MY WORKFLOW RUNS ──────────────────────────────────────────────
+GET {{baseUrl}}/api/workflows/runs
+Authorization: Bearer {{token}}
+
+###
+
+### ── LIST RUNS FOR A SPECIFIC WORKFLOW ──────────────────────────────────────
+GET {{baseUrl}}/api/workflows/runs?workflowId={{workflowId}}
+Authorization: Bearer {{token}}
+
+###
+
+### ── GET SINGLE RUN (with full step details) ────────────────────────────────
+GET {{baseUrl}}/api/workflows/runs/{{runId}}
+Authorization: Bearer {{token}}
+
+###
+
+### ── DELETE WORKFLOW ─────────────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/workflows/{{workflowId}}
+Authorization: Bearer {{token}}
+
+###
+
+### ── VALIDATION: missing required field ────────────────────────────────────
+POST {{baseUrl}}/api/workflows
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Invalid workflow",
+  "steps": []
+}
+
+###
+
+### ── VALIDATION: duplicate step IDs (should return 400) ─────────────────────
+POST {{baseUrl}}/api/workflows
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Duplicate step IDs",
+  "steps": [
+    {
+      "id": "step_1",
+      "name": "First",
+      "agentId": "{{agentId1}}",
+      "inputTemplate": "{{initial_input}}"
+    },
+    {
+      "id": "step_1",
+      "name": "Duplicate",
+      "agentId": "{{agentId2}}",
+      "inputTemplate": "{{step_1.output}}"
+    }
+  ]
+}
+
+###

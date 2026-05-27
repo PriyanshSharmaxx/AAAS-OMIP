@@ -1,0 +1,91 @@
+# Notifications API — REST Client test file
+@baseUrl    = http://localhost:4000
+@userToken  = USER_JWT_TOKEN_HERE      # user@omip.io / User@1234
+@notifId    = NOTIFICATION_ID_HERE
+
+### ── GET INBOX (all, newest first) ─────────────────────────────────────────────
+GET {{baseUrl}}/api/notifications
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── GET INBOX — unread only ────────────────────────────────────────────────────
+GET {{baseUrl}}/api/notifications?unreadOnly=true
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── GET INBOX — paginated ──────────────────────────────────────────────────────
+GET {{baseUrl}}/api/notifications?page=1&limit=10
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── UNREAD COUNT (for badge polling) ───────────────────────────────────────────
+GET {{baseUrl}}/api/notifications/unread-count
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── MARK ONE AS READ ────────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/notifications/mark-read
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "notificationId": "{{notifId}}"
+}
+
+###
+
+### ── MARK ALL AS READ ────────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/notifications/mark-read
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{}
+
+###
+
+### ── DISMISS ONE NOTIFICATION ────────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/notifications/{{notifId}}
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── CLEAR ALL NOTIFICATIONS ─────────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/notifications/all
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── TRIGGER FLOW: run agent → get EXECUTION_COMPLETED notification ─────────────
+# Step 1: Run an agent (sync)
+POST {{baseUrl}}/api/agents/run
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "agentId": "seed-agent-research-bot",
+  "userInput": "What is 2 + 2?",
+  "triggerSource": "manual"
+}
+
+###
+# Step 2: Check inbox — should contain EXECUTION_COMPLETED notification
+GET {{baseUrl}}/api/notifications?unreadOnly=true
+Authorization: Bearer {{userToken}}
+
+###
+
+### ── TRIGGER FLOW: subscribe to listing → creator gets SUBSCRIPTION_NEW ────────
+# Subscribe (user@omip.io → seed-listing-research-bot)
+POST {{baseUrl}}/api/marketplace/seed-listing-research-bot/subscribe
+Authorization: Bearer {{userToken}}
+
+###
+# Creator checks inbox
+GET {{baseUrl}}/api/notifications?unreadOnly=true
+Authorization: Bearer <CREATOR_JWT_TOKEN_HERE>
+
+###

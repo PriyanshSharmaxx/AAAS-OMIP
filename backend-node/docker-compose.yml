@@ -1,0 +1,99 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Omip AaaS — local full-stack compose
+#
+# Usage:
+#   cp .env.example .env          # fill in secrets
+#   docker compose up --build     # first run
+#   docker compose up -d          # subsequent runs
+#   docker compose down -v        # tear down (removes volumes)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       omip
+      POSTGRES_USER:     omip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"   # expose for prisma studio / local tooling
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U omip -d omip"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 20 1 --loglevel warning
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"   # expose for local inspection
+    healthcheck:
+      test:     ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── Migrations (runs once, then exits) ────────────────────────────────────
+  migrate:
+    build: .
+    target: runtime
+    command: ["npx", "prisma", "migrate", "deploy"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://omip:${POSTGRES_PASSWORD:-changeme}@postgres:5432/omip
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ── API server ──────────────────────────────────────────────────────────────
+  api:
+    build: .
+    target: runtime
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4000}:4000"
+    env_file: .env
+    environment:
+      NODE_ENV:     production
+      DATABASE_URL: postgresql://omip:${POSTGRES_PASSWORD:-changeme}@postgres:5432/omip
+      REDIS_URL:    redis://redis:6379
+      TRUST_PROXY:  "1"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  # ── Worker process ──────────────────────────────────────────────────────────
+  worker:
+    build: .
+    target: runtime
+    command: ["node", "dist/workers/index.js"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV:           production
+      DATABASE_URL:       postgresql://omip:${POSTGRES_PASSWORD:-changeme}@postgres:5432/omip
+      REDIS_URL:          redis://redis:6379
+      WORKER_CONCURRENCY: "${WORKER_CONCURRENCY:-5}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

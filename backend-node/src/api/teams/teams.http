@@ -1,0 +1,177 @@
+# Teams API — REST Client test file
+@baseUrl = http://localhost:4000
+@ownerToken  = OWNER_JWT_TOKEN_HERE    # creator@omip.io / Creator@1234
+@memberToken = MEMBER_JWT_TOKEN_HERE   # user@omip.io / User@1234
+@adminToken  = ADMIN_JWT_TOKEN_HERE    # admin@omip.io / Admin@1234
+# Replace after creating:
+@teamId     = TEAM_ID_HERE
+@inviteToken = INVITE_TOKEN_HERE
+@memberId   = MEMBER_USER_ID_HERE
+
+### ── CREATE TEAM ─────────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/teams
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "name": "Omip Engineering",
+  "description": "Core engineering team building AI agents on Omip."
+}
+
+###
+
+### ── CREATE TEAM (with avatar) ──────────────────────────────────────────────
+POST {{baseUrl}}/api/teams
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "name": "Research Lab",
+  "description": "AI research and experimentation team.",
+  "avatarUrl": "https://example.com/avatar.png"
+}
+
+###
+
+### ── LIST MY TEAMS ────────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/teams
+Authorization: Bearer {{ownerToken}}
+
+###
+
+### ── GET TEAM DETAIL (with member list) ──────────────────────────────────────
+GET {{baseUrl}}/api/teams/{{teamId}}
+Authorization: Bearer {{ownerToken}}
+
+###
+
+### ── GET TEAM — as member ────────────────────────────────────────────────────
+GET {{baseUrl}}/api/teams/{{teamId}}
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ── UPDATE TEAM ──────────────────────────────────────────────────────────────
+PATCH {{baseUrl}}/api/teams/{{teamId}}
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "name": "Omip Engineering (Updated)",
+  "description": "Updated description for our engineering team."
+}
+
+###
+
+### ── INVITE BY USER ID (direct — instant ACCEPTED) ─────────────────────────
+# Get user ID from GET /api/auth/me with the target user's token
+POST {{baseUrl}}/api/teams/{{teamId}}/invite
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "userId": "{{memberId}}",
+  "role": "MEMBER"
+}
+
+###
+
+### ── INVITE BY EMAIL (creates PENDING invite with token) ─────────────────────
+POST {{baseUrl}}/api/teams/{{teamId}}/invite
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "email": "newmember@example.com",
+  "role": "VIEWER"
+}
+
+###
+
+### ── LIST MY PENDING INVITES ─────────────────────────────────────────────────
+GET {{baseUrl}}/api/teams/invites/pending
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ── ACCEPT INVITE (invitee must be logged in) ───────────────────────────────
+POST {{baseUrl}}/api/teams/invites/{{inviteToken}}/accept
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ── DECLINE INVITE ──────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/teams/invites/{{inviteToken}}/decline
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ── CHANGE MEMBER ROLE (OWNER only) ────────────────────────────────────────
+PATCH {{baseUrl}}/api/teams/{{teamId}}/members/{{memberId}}/role
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "role": "ADMIN"
+}
+
+###
+
+### ── REMOVE MEMBER (ADMIN+ or self-leave) ────────────────────────────────────
+DELETE {{baseUrl}}/api/teams/{{teamId}}/members/{{memberId}}
+Authorization: Bearer {{ownerToken}}
+
+###
+
+### ── LEAVE TEAM (self) ────────────────────────────────────────────────────────
+# Member removes themselves
+DELETE {{baseUrl}}/api/teams/{{teamId}}/members/{{memberId}}
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ── TRANSFER OWNERSHIP ──────────────────────────────────────────────────────
+POST {{baseUrl}}/api/teams/{{teamId}}/transfer
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "newOwnerId": "{{memberId}}"
+}
+
+###
+
+### ── DELETE TEAM (OWNER only) ────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/teams/{{teamId}}
+Authorization: Bearer {{ownerToken}}
+
+###
+
+### ── SECURITY: non-member cannot view team (should return 403) ──────────────
+GET {{baseUrl}}/api/teams/{{teamId}}
+Authorization: Bearer {{adminToken}}
+
+###
+
+### ── SECURITY: MEMBER cannot invite (should return 403) ─────────────────────
+POST {{baseUrl}}/api/teams/{{teamId}}/invite
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "email": "hacker@evil.com",
+  "role": "ADMIN"
+}
+
+###
+
+### ── SECURITY: change own role (should return 400) ──────────────────────────
+PATCH {{baseUrl}}/api/teams/{{teamId}}/members/OWNER_USER_ID/role
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{
+  "role": "MEMBER"
+}
+
+###

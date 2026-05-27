@@ -1,0 +1,96 @@
+# Agents API — REST Client test file
+@baseUrl = http://localhost:4000
+@contentType = application/json
+# Paste token from /api/auth/login here:
+@token = YOUR_JWT_TOKEN_HERE
+
+### ── CREATE AGENT ──────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/agents
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+  "name": "My Research Agent",
+  "description": "Performs deep web research and produces structured reports.",
+  "category": "research",
+  "prompt": "You are an expert research assistant. When given a topic, search for relevant information, validate sources, synthesise findings, and provide citations.",
+  "model": "gpt-4o",
+  "config": {
+    "temperature": 0.3,
+    "maxTokens": 4096
+  },
+  "tools": [
+    { "name": "web_search", "enabled": true },
+    { "name": "cite_source", "enabled": true }
+  ],
+  "isPublic": false,
+  "tags": ["research", "citations"]
+}
+
+###
+
+### ── LIST MY AGENTS ─────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/agents?page=1&limit=10&sort=updatedAt&order=desc
+Authorization: Bearer {{token}}
+
+###
+
+### ── LIST MY AGENTS — filtered ─────────────────────────────────────────────
+GET {{baseUrl}}/api/agents?category=research&status=DRAFT&search=research
+Authorization: Bearer {{token}}
+
+###
+
+### ── BROWSE PUBLIC AGENTS (no auth needed) ──────────────────────────────────
+GET {{baseUrl}}/api/agents/public?page=1&limit=10&sort=runsCount&order=desc
+
+###
+
+### ── GET SINGLE AGENT ────────────────────────────────────────────────────────
+# Replace AGENT_ID with a real id from create or seed
+GET {{baseUrl}}/api/agents/seed-agent-research-bot
+
+###
+
+### ── UPDATE AGENT ────────────────────────────────────────────────────────────
+PATCH {{baseUrl}}/api/agents/AGENT_ID_HERE
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+  "description": "Updated description — now includes image analysis.",
+  "isPublic": true,
+  "status": "ACTIVE",
+  "config": {
+    "temperature": 0.2,
+    "maxTokens": 8192
+  }
+}
+
+###
+
+### ── SOFT DELETE (archive) ───────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/agents/AGENT_ID_HERE
+Authorization: Bearer {{token}}
+
+###
+
+### ── EXECUTION HISTORY ───────────────────────────────────────────────────────
+GET {{baseUrl}}/api/agents/seed-agent-research-bot/runs?limit=10
+Authorization: Bearer {{token}}
+
+###
+
+### ── Validation error test (bad category) ───────────────────────────────────
+POST {{baseUrl}}/api/agents
+Authorization: Bearer {{token}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Bad Agent",
+  "category": "INVALID_CATEGORY",
+  "prompt": "short",
+  "model": "gpt-4o"
+}
+
+###

@@ -1,0 +1,160 @@
+# Permissions API — REST Client test file
+@baseUrl       = http://localhost:4000
+@creatorToken  = CREATOR_JWT_TOKEN_HERE   # creator@omip.io / Creator@1234
+@userToken     = USER_JWT_TOKEN_HERE      # user@omip.io    / User@1234
+@agentId       = seed-agent-research-bot
+@workflowId    = seed-workflow-research-summary
+@userId        = USER_ID_HERE             # demo_user's id (from GET /api/auth/me)
+@permissionId  = PERMISSION_ID_HERE
+
+### ── GRANT: give demo_user RUN access to a private agent ───────────────────────
+POST {{baseUrl}}/api/permissions
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "userId":       "{{userId}}",
+  "resourceType": "AGENT",
+  "resourceId":   "{{agentId}}",
+  "action":       "RUN"
+}
+
+###
+
+### ── GRANT: give demo_user READ access to a private workflow ────────────────────
+POST {{baseUrl}}/api/permissions
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "userId":       "{{userId}}",
+  "resourceType": "WORKFLOW",
+  "resourceId":   "{{workflowId}}",
+  "action":       "READ"
+}
+
+###
+
+### ── GRANT: give demo_user RUN access to workflow ────────────────────────────────
+POST {{baseUrl}}/api/permissions
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "userId":       "{{userId}}",
+  "resourceType": "WORKFLOW",
+  "resourceId":   "{{workflowId}}",
+  "action":       "RUN"
+}
+
+###
+
+### ── LIST permissions on an agent (owner only) ─────────────────────────────────
+GET {{baseUrl}}/api/permissions?resourceType=AGENT&resourceId={{agentId}}
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── VALIDATE: check if demo_user can RUN the agent ────────────────────────────
+POST {{baseUrl}}/api/permissions/validate
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "userId":       "{{userId}}",
+  "resourceType": "AGENT",
+  "resourceId":   "{{agentId}}",
+  "action":       "RUN"
+}
+
+###
+
+### ── VALIDATE: owner always allowed (returns reason: owner) ────────────────────
+POST {{baseUrl}}/api/permissions/validate
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "userId":       "CREATOR_USER_ID_HERE",
+  "resourceType": "AGENT",
+  "resourceId":   "{{agentId}}",
+  "action":       "DELETE"
+}
+
+###
+
+### ── VALIDATE: public resource — READ allowed without grant ─────────────────────
+POST {{baseUrl}}/api/permissions/validate
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "userId":       "{{userId}}",
+  "resourceType": "AGENT",
+  "resourceId":   "{{agentId}}",
+  "action":       "READ"
+}
+
+###
+
+### ── VALIDATE: no grant — denied ────────────────────────────────────────────────
+POST {{baseUrl}}/api/permissions/validate
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "userId":       "{{userId}}",
+  "resourceType": "AGENT",
+  "resourceId":   "{{agentId}}",
+  "action":       "EDIT"
+}
+
+###
+
+### ── REVOKE permission ────────────────────────────────────────────────────────────
+DELETE {{baseUrl}}/api/permissions/{{permissionId}}
+Authorization: Bearer {{creatorToken}}
+
+###
+
+### ── SECURITY: non-owner cannot grant (should 403) ────────────────────────────
+POST {{baseUrl}}/api/permissions
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "userId":       "{{userId}}",
+  "resourceType": "AGENT",
+  "resourceId":   "{{agentId}}",
+  "action":       "RUN"
+}
+
+###
+
+### ── SECURITY: cannot grant to yourself (should 400) ───────────────────────────
+POST {{baseUrl}}/api/permissions
+Authorization: Bearer {{creatorToken}}
+Content-Type: application/json
+
+{
+  "userId":       "CREATOR_USER_ID_HERE",
+  "resourceType": "AGENT",
+  "resourceId":   "{{agentId}}",
+  "action":       "RUN"
+}
+
+###
+
+### ── INTEGRATION: run agent after RUN permission granted ───────────────────────
+# demo_user can now execute the private agent via explicit grant
+POST {{baseUrl}}/api/agents/run
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{
+  "agentId":    "{{agentId}}",
+  "userInput":  "Summarise quantum computing trends.",
+  "triggerSource": "manual"
+}
+
+###

@@ -1,0 +1,213 @@
+# Tools API — REST Client test file
+@baseUrl = http://localhost:4000
+@token = YOUR_JWT_TOKEN_HERE
+
+### ── LIST ALL TOOLS ─────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/tools
+Accept: application/json
+
+###
+
+### ── LIST TOOLS BY CATEGORY ─────────────────────────────────────────────────
+GET {{baseUrl}}/api/tools?category=email
+Accept: application/json
+
+###
+
+### ── LIST TOOLS — API CATEGORY ──────────────────────────────────────────────
+GET {{baseUrl}}/api/tools?category=api
+Accept: application/json
+
+###
+
+### ── GET SINGLE TOOL ─────────────────────────────────────────────────────────
+GET {{baseUrl}}/api/tools/gmail_send
+Accept: application/json
+
+###
+
+### ── GET TOOL — http_request ────────────────────────────────────────────────
+GET {{baseUrl}}/api/tools/http_request
+Accept: application/json
+
+###
+
+### ── TEST: web_search ────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/tools/web_search/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "query": "latest AI news 2024",
+    "num_results": "3"
+  }
+}
+
+###
+
+### ── TEST: calculator ────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/tools/calculator/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "expression": "(150 * 0.15) + 22.50",
+    "precision": "2"
+  }
+}
+
+###
+
+### ── TEST: parse_json ────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/tools/parse_json/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "json_string": "{\"user\":{\"name\":\"Alice\",\"email\":\"alice@example.com\"},\"meta\":{\"total\":42}}",
+    "fields": "user.name,user.email,meta.total"
+  }
+}
+
+###
+
+### ── TEST: http_request (public URL) ────────────────────────────────────────
+POST {{baseUrl}}/api/tools/http_request/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "url": "https://api.github.com/users/octocat",
+    "method": "GET",
+    "parse_json": "true"
+  }
+}
+
+###
+
+### ── TEST: http_request (blocked private URL — should return error) ─────────
+POST {{baseUrl}}/api/tools/http_request/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "url": "http://localhost:5432/internal",
+    "method": "GET"
+  }
+}
+
+###
+
+### ── TEST: gmail_send ────────────────────────────────────────────────────────
+POST {{baseUrl}}/api/tools/gmail_send/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "to": "user@example.com",
+    "subject": "Test from Omip Agent",
+    "body": "Hello from the agent tool test endpoint!"
+  },
+  "config": {
+    "accessToken": "mock-oauth2-token"
+  }
+}
+
+###
+
+### ── TEST: text_transform ────────────────────────────────────────────────────
+POST {{baseUrl}}/api/tools/text_transform/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "text": "hello world from omip",
+    "operation": "camel_case"
+  }
+}
+
+###
+
+### ── TEST: file_convert (CSV → JSON) ────────────────────────────────────────
+POST {{baseUrl}}/api/tools/file_convert/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "content": "id,name,score\n1,Alice,92\n2,Bob,88\n3,Charlie,95",
+    "from": "csv",
+    "to": "json"
+  }
+}
+
+###
+
+### ── TEST: github_get_repo ──────────────────────────────────────────────────
+POST {{baseUrl}}/api/tools/github_get_repo/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "owner": "anthropics",
+    "repo":  "claude-code"
+  },
+  "config": {
+    "accessToken": "ghp_mock_token"
+  }
+}
+
+###
+
+### ── TEST: db_query (safe SELECT) ──────────────────────────────────────────
+POST {{baseUrl}}/api/tools/db_query/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "sql": "SELECT id, name, created_at FROM users WHERE active = true LIMIT 10",
+    "max_rows": "5",
+    "format": "json"
+  },
+  "config": {
+    "connectionString": "postgres://localhost:5432/omip_dev"
+  }
+}
+
+###
+
+### ── TEST: db_query (blocked write — should return error) ───────────────────
+POST {{baseUrl}}/api/tools/db_query/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {
+    "sql": "DELETE FROM users WHERE id = '123'"
+  },
+  "config": {
+    "connectionString": "postgres://localhost:5432/omip_dev"
+  }
+}
+
+###
+
+### ── TEST: unknown tool (should return 404) ─────────────────────────────────
+POST {{baseUrl}}/api/tools/does_not_exist/test
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "args": {}
+}
+
+###

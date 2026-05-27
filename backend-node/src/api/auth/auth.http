@@ -1,0 +1,92 @@
+# Auth API — REST Client test file
+# Works with VS Code REST Client extension
+# or import into Postman / Insomnia
+
+@baseUrl = http://localhost:4000
+@contentType = application/json
+
+### Health check
+GET {{baseUrl}}/health
+
+###
+
+### ── SIGNUP ─────────────────────────────────────────────
+POST {{baseUrl}}/api/auth/signup
+Content-Type: {{contentType}}
+
+{
+  "email": "test@example.com",
+  "username": "test_user",
+  "password": "Test@1234",
+  "role": "USER",
+  "displayName": "Test User"
+}
+
+###
+
+### ── SIGNUP (Creator) ───────────────────────────────────
+POST {{baseUrl}}/api/auth/signup
+Content-Type: {{contentType}}
+
+{
+  "email": "creator2@example.com",
+  "username": "new_creator",
+  "password": "Creator@5678",
+  "role": "CREATOR",
+  "displayName": "New Creator"
+}
+
+###
+
+### ── LOGIN ──────────────────────────────────────────────
+# @name loginRequest
+POST {{baseUrl}}/api/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "user@omip.io",
+  "password": "User@1234"
+}
+
+###
+
+### ── ME (protected) ─────────────────────────────────────
+# Replace TOKEN with value from loginRequest response
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer TOKEN_HERE
+
+###
+
+### ── CHANGE PASSWORD (protected) ────────────────────────
+POST {{baseUrl}}/api/auth/change-password
+Authorization: Bearer TOKEN_HERE
+Content-Type: {{contentType}}
+
+{
+  "currentPassword": "User@1234",
+  "newPassword": "NewUser@5678"
+}
+
+###
+
+### ── LOGOUT (protected) ─────────────────────────────────
+POST {{baseUrl}}/api/auth/logout
+Authorization: Bearer TOKEN_HERE
+
+###
+
+### ── Invalid login (401 test) ───────────────────────────
+POST {{baseUrl}}/api/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "user@omip.io",
+  "password": "wrongpassword"
+}
+
+###
+
+### ── No token (401 test) ────────────────────────────────
+GET {{baseUrl}}/api/auth/me
+
+###
